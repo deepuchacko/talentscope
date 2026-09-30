@@ -1,0 +1,8 @@
+{
+  "name": "talentscope-web",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/sdk": "latest"
+  }
+}

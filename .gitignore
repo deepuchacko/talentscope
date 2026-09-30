@@ -1,0 +1,17 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+.eggs/
+
+# Node
+node_modules/
+
+# Env
+.env
+.env.local
+
+# Vercel
+.vercel/

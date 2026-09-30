@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TalentScope</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .badge-recommend { @apply bg-emerald-100 text-emerald-800 border border-emerald-300; }
+    .badge-hold      { @apply bg-amber-100 text-amber-800 border border-amber-300; }
+    .badge-reject    { @apply bg-red-100 text-red-800 border border-red-300; }
+    .bar-fill        { transition: width 0.6s ease; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans text-gray-800">
+
+  <!-- Header -->
+  <header class="bg-white border-b border-gray-200 px-6 py-4">
+    <div class="max-w-5xl mx-auto flex items-center gap-3">
+      <span class="text-2xl font-bold tracking-tight">TalentScope</span>
+      <span class="text-sm text-gray-400">AI-powered hiring recommendation</span>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="max-w-5xl mx-auto px-4 py-8 space-y-6">
+
+    <!-- Input grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="flex flex-col gap-1">
+        <label for="jd" class="text-sm font-semibold text-gray-700">Job Description</label>
+        <textarea
+          id="jd"
+          rows="14"
+          placeholder="Paste the full job description here…"
+          class="w-full rounded-lg border border-gray-300 p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+        ></textarea>
+      </div>
+      <div class="flex flex-col gap-1">
+        <label for="resume" class="text-sm font-semibold text-gray-700">Candidate Resume</label>
+        <textarea
+          id="resume"
+          rows="14"
+          placeholder="Paste the candidate's resume here…"
+          class="w-full rounded-lg border border-gray-300 p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+        ></textarea>
+      </div>
+    </div>
+
+    <!-- Submit -->
+    <div class="flex items-center gap-4">
+      <button
+        id="evaluate-btn"
+        class="px-6 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        Evaluate Candidate
+      </button>
+      <span id="status-msg" class="text-sm text-gray-500 hidden">Evaluating…</span>
+    </div>
+
+    <!-- Results -->
+    <div id="results" class="hidden space-y-5"></div>
+
+  </main>
+
+  <script type="module">
+    const btn = document.getElementById("evaluate-btn");
+    const statusMsg = document.getElementById("status-msg");
+    const resultsEl = document.getElementById("results");
+
+    btn.addEventListener("click", async () => {
+      const jd = document.getElementById("jd").value.trim();
+      const resume = document.getElementById("resume").value.trim();
+
+      if (!jd || !resume) {
+        showError("Please fill in both the job description and the resume.");
+        return;
+      }
+
+      btn.disabled = true;
+      statusMsg.classList.remove("hidden");
+      resultsEl.classList.add("hidden");
+      resultsEl.innerHTML = "";
+
+      try {
+        const res = await fetch("/api/evaluate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jd, resume }),
+        });
+
+        const data = await res.json();
+        render(data);
+      } catch (err) {
+        showError("Network error. Please try again.");
+      } finally {
+        btn.disabled = false;
+        statusMsg.classList.add("hidden");
+      }
+    });
+
+    function render(data) {
+      resultsEl.innerHTML = "";
+
+      if (data.status === "not_english") {
+        showBanner("warning", "Non-English resume", "Please provide the resume in English.");
+        return;
+      }
+      if (data.status === "invalid_resume") {
+        showBanner("warning", "Invalid resume", data.message || "The document does not appear to be a valid resume. Please provide a document containing work experience, education, or skills.");
+        return;
+      }
+      if (data.status === "error") {
+        showError(data.message || "An unexpected error occurred.");
+        return;
+      }
+
+      // Success — build recommendation card
+      const rec = data.recommendation;
+      const badgeClass = rec === "recommend" ? "badge-recommend" : rec === "hold" ? "badge-hold" : "badge-reject";
+      const badgeLabel = rec.toUpperCase();
+
+      const card = document.createElement("div");
+      card.className = "bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden";
+
+      // Header row
+      card.innerHTML = `
+        <div class="px-6 py-4 flex items-center gap-4 border-b border-gray-100">
+          <span class="px-4 py-1.5 rounded-full text-sm font-bold tracking-wide ${badgeClass}">${badgeLabel}</span>
+          <div class="flex gap-6 text-sm text-gray-500">
+            <span>Confidence <strong class="text-gray-800">${pct(data.confidence)}</strong></span>
+            <span>Must-have coverage <strong class="text-gray-800">${pct(data.must_have_coverage)}</strong></span>
+          </div>
+          ${data.flags?.length ? `<div class="ml-auto flex gap-2">${data.flags.map(f => `<span class="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full">${f.replace("_", " ")}</span>`).join("")}</div>` : ""}
+        </div>
+
+        <!-- Progress bars -->
+        <div class="px-6 py-3 grid grid-cols-2 gap-4 border-b border-gray-100 bg-gray-50">
+          ${bar("Confidence", data.confidence, "bg-indigo-500")}
+          ${bar("Must-have coverage", data.must_have_coverage, rec === "recommend" ? "bg-emerald-500" : rec === "hold" ? "bg-amber-500" : "bg-red-500")}
+        </div>
+
+        <!-- Evidence -->
+        <div class="px-6 py-4">
+          <p class="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Evidence</p>
+          <ul class="space-y-3">
+            ${(data.reasons || []).map(r => `
+              <li class="flex gap-3">
+                <span class="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold ${r.signal === "positive" ? "bg-emerald-100 text-emerald-600" : "bg-red-100 text-red-600"}">
+                  ${r.signal === "positive" ? "+" : "!"}
+                </span>
+                <div>
+                  <p class="text-sm font-medium">${esc(r.label)}</p>
+                  <p class="text-xs text-gray-500 mt-0.5 italic">"${esc(r.evidence)}"</p>
+                </div>
+              </li>
+            `).join("")}
+          </ul>
+        </div>
+      `;
+
+      resultsEl.appendChild(card);
+      resultsEl.classList.remove("hidden");
+    }
+
+    function bar(label, value, colorClass) {
+      const w = Math.round((value ?? 0) * 100);
+      return `
+        <div>
+          <p class="text-xs text-gray-500 mb-1">${label}</p>
+          <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div class="h-full bar-fill ${colorClass} rounded-full" style="width: ${w}%"></div>
+          </div>
+        </div>`;
+    }
+
+    function pct(v) { return v != null ? `${Math.round(v * 100)}%` : "—"; }
+    function esc(s) { return (s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+    function showError(msg) {
+      resultsEl.innerHTML = `<div class="rounded-lg border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">${esc(msg)}</div>`;
+      resultsEl.classList.remove("hidden");
+    }
+
+    function showBanner(type, title, msg) {
+      const cls = type === "warning"
+        ? "border-amber-200 bg-amber-50 text-amber-800"
+        : "border-red-200 bg-red-50 text-red-800";
+      resultsEl.innerHTML = `<div class="rounded-lg border ${cls} px-5 py-4 text-sm"><strong>${esc(title)}:</strong> ${esc(msg)}</div>`;
+      resultsEl.classList.remove("hidden");
+    }
+  </script>
+
+</body>
+</html>
