@@ -33,8 +33,10 @@ const SCHEMA = {
     },
     message: { type: ["string", "null"] },
     recommendation: {
-      type: ["string", "null"],
-      enum: ["recommend", "hold", "reject", null],
+      anyOf: [
+        { type: "string", enum: ["recommend", "hold", "reject"] },
+        { type: "null" },
+      ],
     },
     confidence: { type: ["number", "null"] },
     must_have_coverage: { type: ["number", "null"] },
